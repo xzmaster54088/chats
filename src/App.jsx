@@ -15,11 +15,15 @@ function App() {
   // OpenAI settings
   const [openaiApiKey, setOpenaiApiKey] = useState(localStorage.getItem('openai_api_key') || '')
   const [openaiModel, setOpenaiModel] = useState(localStorage.getItem('openai_model') || 'gpt-3.5-turbo')
+  const [openaiCustomModel, setOpenaiCustomModel] = useState(localStorage.getItem('openai_custom_model') || '')
+  const [openaiUseCustomModel, setOpenaiUseCustomModel] = useState(localStorage.getItem('openai_use_custom_model') === 'true')
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState(localStorage.getItem('openai_base_url') || 'https://api.openai.com/v1')
   
   // Google settings
   const [googleApiKey, setGoogleApiKey] = useState(localStorage.getItem('google_api_key') || '')
   const [googleModel, setGoogleModel] = useState(localStorage.getItem('google_model') || 'gemini-pro')
+  const [googleCustomModel, setGoogleCustomModel] = useState(localStorage.getItem('google_custom_model') || '')
+  const [googleUseCustomModel, setGoogleUseCustomModel] = useState(localStorage.getItem('google_use_custom_model') === 'true')
   const [googleBaseUrl, setGoogleBaseUrl] = useState(localStorage.getItem('google_base_url') || 'https://generativelanguage.googleapis.com/v1beta')
   
   const messagesEndRef = useRef(null)
@@ -44,14 +48,19 @@ function App() {
     localStorage.setItem('api_provider', apiProvider)
     localStorage.setItem('openai_api_key', openaiApiKey)
     localStorage.setItem('openai_model', openaiModel)
+    localStorage.setItem('openai_custom_model', openaiCustomModel)
+    localStorage.setItem('openai_use_custom_model', openaiUseCustomModel.toString())
     localStorage.setItem('openai_base_url', openaiBaseUrl)
     localStorage.setItem('google_api_key', googleApiKey)
     localStorage.setItem('google_model', googleModel)
+    localStorage.setItem('google_custom_model', googleCustomModel)
+    localStorage.setItem('google_use_custom_model', googleUseCustomModel.toString())
     localStorage.setItem('google_base_url', googleBaseUrl)
     setShowSettings(false)
   }
 
   const callOpenAI = async (userMessage) => {
+    const modelToUse = openaiUseCustomModel && openaiCustomModel ? openaiCustomModel : openaiModel
     const response = await fetch(`${openaiBaseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -59,7 +68,7 @@ function App() {
         'Authorization': `Bearer ${openaiApiKey}`
       },
       body: JSON.stringify({
-        model: openaiModel,
+        model: modelToUse,
         messages: [...messages, userMessage],
         temperature: 0.7,
         max_tokens: 2000
@@ -76,7 +85,8 @@ function App() {
   }
 
   const callGoogle = async (userMessage) => {
-    const response = await fetch(`${googleBaseUrl}/models/${googleModel}:generateContent?key=${googleApiKey}`, {
+    const modelToUse = googleUseCustomModel && googleCustomModel ? googleCustomModel : googleModel
+    const response = await fetch(`${googleBaseUrl}/models/${modelToUse}:generateContent?key=${googleApiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -251,13 +261,37 @@ function App() {
                     <select
                       value={openaiModel}
                       onChange={(e) => setOpenaiModel(e.target.value)}
-                      className="w-full px-4 py-3 border border-outline dark:border-outline-dark rounded-xl bg-surface dark:bg-surface-dark text-on-surface dark:text-on-surface-dark focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark focus:border-transparent transition-all"
+                      disabled={openaiUseCustomModel}
+                      className="w-full px-4 py-3 border border-outline dark:border-outline-dark rounded-xl bg-surface dark:bg-surface-dark text-on-surface dark:text-on-surface-dark focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
                       <option value="gpt-4">GPT-4</option>
                       <option value="gpt-4-turbo-preview">GPT-4 Turbo</option>
                       <option value="gpt-4o">GPT-4o</option>
                     </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="openai-custom-model"
+                        checked={openaiUseCustomModel}
+                        onChange={(e) => setOpenaiUseCustomModel(e.target.checked)}
+                        className="w-5 h-5 rounded border-outline dark:border-outline-dark text-primary dark:text-primary-dark focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark"
+                      />
+                      <label htmlFor="openai-custom-model" className="text-sm font-medium text-on-surface dark:text-on-surface-dark cursor-pointer">
+                        使用自定义模型
+                      </label>
+                    </div>
+                    {openaiUseCustomModel && (
+                      <input
+                        type="text"
+                        value={openaiCustomModel}
+                        onChange={(e) => setOpenaiCustomModel(e.target.value)}
+                        placeholder="输入自定义模型名称，例如：gpt-4-0125-preview"
+                        className="w-full px-4 py-3 border border-outline dark:border-outline-dark rounded-xl bg-surface dark:bg-surface-dark text-on-surface dark:text-on-surface-dark focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark focus:border-transparent transition-all"
+                      />
+                    )}
                   </div>
                 </>
               )}
@@ -296,12 +330,36 @@ function App() {
                     <select
                       value={googleModel}
                       onChange={(e) => setGoogleModel(e.target.value)}
-                      className="w-full px-4 py-3 border border-outline dark:border-outline-dark rounded-xl bg-surface dark:bg-surface-dark text-on-surface dark:text-on-surface-dark focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark focus:border-transparent transition-all"
+                      disabled={googleUseCustomModel}
+                      className="w-full px-4 py-3 border border-outline dark:border-outline-dark rounded-xl bg-surface dark:bg-surface-dark text-on-surface dark:text-on-surface-dark focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="gemini-pro">Gemini Pro</option>
                       <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
                       <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
                     </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="google-custom-model"
+                        checked={googleUseCustomModel}
+                        onChange={(e) => setGoogleUseCustomModel(e.target.checked)}
+                        className="w-5 h-5 rounded border-outline dark:border-outline-dark text-primary dark:text-primary-dark focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark"
+                      />
+                      <label htmlFor="google-custom-model" className="text-sm font-medium text-on-surface dark:text-on-surface-dark cursor-pointer">
+                        使用自定义模型
+                      </label>
+                    </div>
+                    {googleUseCustomModel && (
+                      <input
+                        type="text"
+                        value={googleCustomModel}
+                        onChange={(e) => setGoogleCustomModel(e.target.value)}
+                        placeholder="输入自定义模型名称，例如：gemini-1.5-pro-latest"
+                        className="w-full px-4 py-3 border border-outline dark:border-outline-dark rounded-xl bg-surface dark:bg-surface-dark text-on-surface dark:text-on-surface-dark focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark focus:border-transparent transition-all"
+                      />
+                    )}
                   </div>
                 </>
               )}
