@@ -7,9 +7,19 @@ function App() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [apiKey, setApiKey] = useState(localStorage.getItem('openai_api_key') || '')
   const [showSettings, setShowSettings] = useState(false)
-  const [model, setModel] = useState(localStorage.getItem('openai_model') || 'gpt-3.5-turbo')
+  
+  // API Provider settings
+  const [apiProvider, setApiProvider] = useState(localStorage.getItem('api_provider') || 'openai')
+  
+  // OpenAI settings
+  const [openaiApiKey, setOpenaiApiKey] = useState(localStorage.getItem('openai_api_key') || '')
+  const [openaiModel, setOpenaiModel] = useState(localStorage.getItem('openai_model') || 'gpt-3.5-turbo')
+  
+  // Google settings
+  const [googleApiKey, setGoogleApiKey] = useState(localStorage.getItem('google_api_key') || '')
+  const [googleModel, setGoogleModel] = useState(localStorage.getItem('google_model') || 'gemini-pro')
+  
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -23,22 +33,80 @@ function App() {
 
   useEffect(() => {
     // 检查是否有API Key，如果没有则显示设置
-    if (!apiKey) {
+    if (!openaiApiKey && !googleApiKey) {
       setShowSettings(true)
     }
   }, [])
 
   const handleSaveSettings = () => {
-    localStorage.setItem('openai_api_key', apiKey)
-    localStorage.setItem('openai_model', model)
+    localStorage.setItem('api_provider', apiProvider)
+    localStorage.setItem('openai_api_key', openaiApiKey)
+    localStorage.setItem('openai_model', openaiModel)
+    localStorage.setItem('google_api_key', googleApiKey)
+    localStorage.setItem('google_model', googleModel)
     setShowSettings(false)
+  }
+
+  const callOpenAI = async (userMessage) => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`
+      },
+      body: JSON.stringify({
+        model: openaiModel,
+        messages: [...messages, userMessage],
+        temperature: 0.7,
+        max_tokens: 2000
+      })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error?.message || '请求失败')
+    }
+
+    const data = await response.json()
+    return data.choices[0].message.content
+  }
+
+  const callGoogle = async (userMessage) => {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:generateContent?key=${googleApiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: userMessage.content
+          }]
+        }]
+      })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error?.message || '请求失败')
+    }
+
+    const data = await response.json()
+    return data.candidates[0].content.parts[0].text
   }
 
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return
     
-    if (!apiKey) {
+    // 检查当前选择的API是否配置了Key
+    if (apiProvider === 'openai' && !openaiApiKey) {
       alert('请先在设置中配置OpenAI API Key')
+      setShowSettings(true)
+      return
+    }
+    
+    if (apiProvider === 'google' && !googleApiKey) {
+      alert('请先在设置中配置Google API Key')
       setShowSettings(true)
       return
     }
@@ -49,29 +117,17 @@ function App() {
     setIsLoading(true)
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [...messages, userMessage],
-          temperature: 0.7,
-          max_tokens: 2000
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error?.message || '请求失败')
+      let assistantContent
+      
+      if (apiProvider === 'openai') {
+        assistantContent = await callOpenAI(userMessage)
+      } else if (apiProvider === 'google') {
+        assistantContent = await callGoogle(userMessage)
       }
-
-      const data = await response.json()
+      
       const assistantMessage = {
         role: 'assistant',
-        content: data.choices[0].message.content
+        content: assistantContent
       }
       
       setMessages(prev => [...prev, assistantMessage])
@@ -97,6 +153,10 @@ function App() {
     setMessages([])
   }
 
+  const getProviderName = () => {
+    return apiProvider === 'openai' ? 'OpenAI' : 'Google Gemini'
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Header */}
@@ -108,7 +168,7 @@ function App() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI智能聊天助手</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">基于OpenAI API</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">当前使用: {getProviderName()}</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -138,32 +198,86 @@ function App() {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
             <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">设置</h2>
             <div className="space-y-4">
+              {/* API Provider Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  OpenAI API Key
-                </label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  模型
+                  API提供商
                 </label>
                 <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
+                  value={apiProvider}
+                  onChange={(e) => setApiProvider(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition-all"
                 >
-                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                  <option value="gpt-4">GPT-4</option>
-                  <option value="gpt-4-turbo-preview">GPT-4 Turbo</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="google">Google Gemini</option>
                 </select>
               </div>
+
+              {/* OpenAI Settings */}
+              {apiProvider === 'openai' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      OpenAI API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={openaiApiKey}
+                      onChange={(e) => setOpenaiApiKey(e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      OpenAI模型
+                    </label>
+                    <select
+                      value={openaiModel}
+                      onChange={(e) => setOpenaiModel(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition-all"
+                    >
+                      <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                      <option value="gpt-4">GPT-4</option>
+                      <option value="gpt-4-turbo-preview">GPT-4 Turbo</option>
+                      <option value="gpt-4o">GPT-4o</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* Google Settings */}
+              {apiProvider === 'google' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Google API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={googleApiKey}
+                      onChange={(e) => setGoogleApiKey(e.target.value)}
+                      placeholder="AIza..."
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Google模型
+                    </label>
+                    <select
+                      value={googleModel}
+                      onChange={(e) => setGoogleModel(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition-all"
+                    >
+                      <option value="gemini-pro">Gemini Pro</option>
+                      <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                      <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
               <Button
                 onClick={handleSaveSettings}
                 className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all"
@@ -189,7 +303,7 @@ function App() {
                   开始对话
                 </h2>
                 <p className="text-gray-500 dark:text-gray-400 max-w-md">
-                  我是你的AI助手，可以帮你解答问题、提供建议、进行创作等。请在下方输入你的问题开始对话。
+                  我是你的AI助手，支持OpenAI和Google Gemini两种API。可以帮你解答问题、提供建议、进行创作等。请在下方输入你的问题开始对话。
                 </p>
               </div>
             ) : (
